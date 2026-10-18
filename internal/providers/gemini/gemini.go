@@ -78,6 +78,7 @@ type Provider struct {
 	providerName string
 	useNativeAPI bool
 	modelsURL    string
+	edgeToken    string
 	configErr    error
 	cacheMu      sync.Mutex
 	cacheObjects map[string]geminiCacheObject
@@ -108,6 +109,7 @@ func newProvider(providerCfg providers.ProviderConfig, opts providers.ProviderOp
 		authType:     authType,
 		useNativeAPI: useNativeAPI(providerCfg.APIMode),
 		modelsURL:    modelsURL,
+		edgeToken:    strings.TrimSpace(os.Getenv("EDGE_PROXY_AUTH_TOKEN")),
 	}
 	p.validateConfig(providerCfg)
 	if !preauthenticated {
@@ -246,6 +248,9 @@ func (p *Provider) setHeaders(req *http.Request) {
 	if requestID := core.GetRequestID(req.Context()); requestID != "" {
 		req.Header.Set("X-Request-Id", requestID)
 	}
+	if p.edgeToken != "" {
+		req.Header.Set("X-Edge-Proxy-Token", p.edgeToken)
+	}
 }
 
 // setNativeHeaders sets the required headers for Gemini native API requests.
@@ -256,6 +261,9 @@ func (p *Provider) setNativeHeaders(req *http.Request) {
 
 	if requestID := core.GetRequestID(req.Context()); requestID != "" {
 		req.Header.Set("X-Request-Id", requestID)
+	}
+	if p.edgeToken != "" {
+		req.Header.Set("X-Edge-Proxy-Token", p.edgeToken)
 	}
 }
 
