@@ -104,6 +104,14 @@ func stripVLLMDiscoveryFields(resp *core.ModelsResponse) {
 // invisible to them. This keeps that compatibility a per-deployment choice:
 // owned_by is metadata, but claiming to be vLLM is still a lie a deployment may
 // not want to tell.
+//
+// Every entry carries max_model_len, including the ones whose context window
+// the catalog does not know: those advertise 0. A client that decodes the
+// listing against a schema where the field is required fails the whole response
+// over a single entry missing it, so omitting the field for one model hides
+// every other model behind it. Zero is not a claim about the window, it is the
+// absence of one: clients that read the value only when it is positive (OpenCode
+// does) keep their own default.
 func applyVLLMDiscoveryCompat(resp *core.ModelsResponse) {
 	if resp == nil {
 		return
@@ -111,12 +119,17 @@ func applyVLLMDiscoveryCompat(resp *core.ModelsResponse) {
 	for i := range resp.Data {
 		model := &resp.Data[i]
 		model.OwnedBy = vllmDiscoveryOwner
-		if model.Metadata == nil || model.Metadata.ContextWindow == nil {
-			continue
+		// The catalog wins over a limit the provider reported on its own, and a
+		// provider that reports the limit is a source for models the catalog
+		// does not know. Neither leaves the window unknown, which advertises 0.
+		window := 0
+		if model.MaxModelLen != nil && *model.MaxModelLen > 0 {
+			window = *model.MaxModelLen
 		}
-		if window := *model.Metadata.ContextWindow; window > 0 {
-			model.MaxModelLen = &window
+		if model.Metadata != nil && model.Metadata.ContextWindow != nil && *model.Metadata.ContextWindow > 0 {
+			window = *model.Metadata.ContextWindow
 		}
+		model.MaxModelLen = &window
 	}
 }
 
