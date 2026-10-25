@@ -388,7 +388,7 @@ func TestApplyVLLMDiscoveryCompat(t *testing.T) {
 		require.Equal(t, window, *resp.Data[0].MaxModelLen)
 	})
 
-	t.Run("a model without a context window still gets the vllm owner", func(t *testing.T) {
+	t.Run("a model without a context window advertises zero", func(t *testing.T) {
 		resp := &core.ModelsResponse{Data: []core.Model{
 			{ID: "beam", Object: "model", OwnedBy: "ollama"},
 			{ID: "glm-5.3", Object: "model", OwnedBy: "ollama", Metadata: &core.ModelMetadata{}},
@@ -398,11 +398,12 @@ func TestApplyVLLMDiscoveryCompat(t *testing.T) {
 
 		for _, model := range resp.Data {
 			require.Equal(t, vllmDiscoveryOwner, model.OwnedBy)
-			require.Nil(t, model.MaxModelLen, "no context window, no max_model_len")
+			require.NotNil(t, model.MaxModelLen, "the field is required by the client schema")
+			require.Equal(t, 0, *model.MaxModelLen)
 		}
 	})
 
-	t.Run("a non-positive context window is not advertised", func(t *testing.T) {
+	t.Run("a non-positive context window advertises zero", func(t *testing.T) {
 		zero := 0
 		resp := &core.ModelsResponse{Data: []core.Model{
 			{ID: "broken", Object: "model", Metadata: &core.ModelMetadata{ContextWindow: &zero}},
@@ -410,7 +411,29 @@ func TestApplyVLLMDiscoveryCompat(t *testing.T) {
 
 		applyVLLMDiscoveryCompat(resp)
 
-		require.Nil(t, resp.Data[0].MaxModelLen)
+		require.NotNil(t, resp.Data[0].MaxModelLen)
+		require.Equal(t, 0, *resp.Data[0].MaxModelLen)
+	})
+
+	// A client that decodes the listing against a schema where max_model_len is
+	// required fails the whole response over a single entry missing it, so one
+	// model the catalog does not know must not hide the ones it does.
+	t.Run("an unknown context window does not hide the rest of the listing", func(t *testing.T) {
+		window := 131072
+		resp := &core.ModelsResponse{Object: "list", Data: []core.Model{
+			{ID: "deepseek-v4.1-flash-pool", Object: "model", OwnedBy: "anthropic", Metadata: &core.ModelMetadata{ContextWindow: &window}},
+			{ID: "diffusiongemma-pool", Object: "model", OwnedBy: "nvidia"},
+			{ID: "mimo-v2.6-flash-pool", Object: "model", OwnedBy: "opencode", Metadata: &core.ModelMetadata{}},
+		}}
+
+		applyVLLMDiscoveryCompat(resp)
+
+		for _, model := range resp.Data {
+			require.NotNil(t, model.MaxModelLen, "every entry carries the field: %s", model.ID)
+		}
+		require.Equal(t, window, *resp.Data[0].MaxModelLen)
+		require.Equal(t, 0, *resp.Data[1].MaxModelLen)
+		require.Equal(t, 0, *resp.Data[2].MaxModelLen)
 	})
 
 	t.Run("a provider-reported max_model_len is dropped when the setting is off", func(t *testing.T) {
