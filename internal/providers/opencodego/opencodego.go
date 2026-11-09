@@ -209,7 +209,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *core.ChatRequest) (*
 		if err != nil {
 			return nil, err
 		}
-		return openai.ChatViaResponses(ctx, p.Compatible(), adapted, "opencode_go")
+		return openai.ChatViaResponses(ctx, p.Compatible(), adapted, p.ProviderName())
 	}
 	return p.ChatCompatible.ChatCompletion(ctx, req)
 }
@@ -224,7 +224,7 @@ func (p *Provider) StreamChatCompletion(ctx context.Context, req *core.ChatReque
 		if err != nil {
 			return nil, err
 		}
-		return openai.StreamChatViaResponses(ctx, p.Compatible(), adapted, "opencode_go")
+		return openai.StreamChatViaResponses(ctx, p.Compatible(), adapted, p.ProviderName())
 	}
 	return p.ChatCompatible.StreamChatCompletion(ctx, req)
 }
