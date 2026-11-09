@@ -42,12 +42,19 @@ OPENCODE_GO_MODELS=glm-5.1,kimi-k2.7-code,deepseek-v4-pro
 OpenCode Zen 在 OpenAI 风格的 `/chat/completions`（Bearer 认证）上提供大多数模型，另有少数模型仅在 Anthropic 原生的 `/messages` 端点（`x-api-key` 认证）上提供。GoModel 按模型进行路由：
 
 - **OpenAI 风格的模型**（GLM、Kimi、DeepSeek、MiMo、MiniMax 以及大多数 Qwen）发送到 `/chat/completions`。`/models` 和 `/v1/responses`（转换为聊天补全）使用同一路径。
+- **仅支持 Responses 的模型**（Muse Spark、Grok 4.7、GPT Luna 系列）由 OpenAI 风格的 `/responses` 端点原生处理，缓冲和流式均如此；`/chat/completions` 会拒绝它们。
 - **仅支持 Anthropic 格式的模型**会被转换为 Anthropic Messages 格式并发送到 `/messages`，这与 GoModel 处理原生 Anthropic 的方式一致。两条路径都会规范化为相同的兼容 OpenAI 的响应，因此无论客户端选择哪个模型，也无论调用的是 `/v1/chat/completions` 还是 `/v1/messages`，看到的都是一致的接口。
 
 仅支持 `/messages` 的模型集合目前需要手动维护（默认值：`qwen3.7-max`），因为 OpenCode Zen 尚未提供按模型区分的端点元数据。需要时可以覆盖它：
 
 ```bash
 OPENCODE_GO_MESSAGES_MODELS=qwen3.7-max
+```
+
+仅支持 `/responses` 的模型集合也按同样的方式维护（默认值：`muse-spark-1.2-contributor`、`muse-spark-1.3-contributor`、`grok-4.7`、`gpt-5.6-luna`、`gpt-6-luna`）。将该变量设为一个以逗号分隔的模型 ID 列表，即可整体替换默认集合：
+
+```bash
+OPENCODE_GO_RESPONSES_MODELS=muse-spark-1.3-contributor,grok-4.7,gpt-6-luna
 ```
 
 <Note>

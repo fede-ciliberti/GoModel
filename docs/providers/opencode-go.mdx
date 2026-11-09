@@ -52,6 +52,9 @@ auth) and a few models only on the Anthropic-native `/messages` endpoint
 - **OpenAI-style models** (GLM, Kimi, DeepSeek, MiMo, MiniMax, most Qwen) go to
   `/chat/completions`. `/models` and `/v1/responses` (translated to chat
   completions) use the same path.
+- **Responses-only models** (Muse Spark, Grok 4.7, the GPT Luna family) are
+  served natively on the OpenAI-style `/responses` endpoint, buffered and
+  streamed alike; `/chat/completions` rejects them.
 - **Anthropic-only models** are translated to the Anthropic Messages dialect and
   sent to `/messages`, mirroring how GoModel already serves native Anthropic.
   Both paths normalize to the same OpenAI-compatible response, so clients see
@@ -64,6 +67,15 @@ metadata. Override it when needed:
 
 ```bash
 OPENCODE_GO_MESSAGES_MODELS=qwen3.7-max
+```
+
+The `/responses`-only set is maintained the same way (default:
+`muse-spark-1.2-contributor`, `muse-spark-1.3-contributor`, `grok-4.7`,
+`gpt-5.6-luna`, `gpt-6-luna`). Set the variable to a comma-separated list of
+model IDs to replace the default set:
+
+```bash
+OPENCODE_GO_RESPONSES_MODELS=muse-spark-1.3-contributor,grok-4.7,gpt-6-luna
 ```
 
 <Note>

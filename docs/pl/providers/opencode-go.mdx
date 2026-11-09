@@ -51,6 +51,9 @@ OpenCode Zen obsługuje większość modeli na `/chat/completions` w stylu OpenA
 - **Modele w stylu OpenAI** (GLM, Kimi, DeepSeek, MiMo, MiniMax, większość Qwen)
   trafiają do `/chat/completions`. `/models` i `/v1/responses` (tłumaczone na chat
   completions) używają tej samej ścieżki.
+- **Modele dostępne tylko przez Responses** (Muse Spark, Grok 4.7, rodzina GPT
+  Luna) są obsługiwane natywnie na endpoincie OpenAI `/responses`, zarówno w trybie
+  buforowanym, jak i strumieniowym; `/chat/completions` je odrzuca.
 - **Modele dostępne tylko w Anthropic** są tłumaczone na dialekt Anthropic Messages
   i wysyłane do `/messages`, tak jak GoModel już obsługuje natywne Anthropic.
   Obie ścieżki są normalizowane do tej samej odpowiedzi kompatybilnej z OpenAI, więc
@@ -63,6 +66,15 @@ endpointów dla poszczególnych modeli. W razie potrzeby nadpisz go:
 
 ```bash
 OPENCODE_GO_MESSAGES_MODELS=qwen3.7-max
+```
+
+Zestaw modeli dostępnych tylko przez `/responses` utrzymujemy w ten sam sposób
+(domyślnie: `muse-spark-1.2-contributor`, `muse-spark-1.3-contributor`,
+`grok-4.7`, `gpt-5.6-luna`, `gpt-6-luna`). Ustaw tę zmienną na listę ID modeli
+oddzielonych przecinkami, aby zastąpić domyślny zestaw:
+
+```bash
+OPENCODE_GO_RESPONSES_MODELS=muse-spark-1.3-contributor,grok-4.7,gpt-6-luna
 ```
 
 <Note>

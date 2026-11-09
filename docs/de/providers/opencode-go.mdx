@@ -55,6 +55,9 @@ routet pro Modell:
 - **OpenAI-artige Modelle** (GLM, Kimi, DeepSeek, MiMo, MiniMax, die meisten
   Qwen-Modelle) gehen an `/chat/completions`. `/models` und `/v1/responses` (auf Chat
   Completions übersetzt) nutzen denselben Pfad.
+- **Reine Responses-Modelle** (Muse Spark, Grok 4.7, die GPT-Luna-Familie) werden
+  nativ am OpenAI-Endpunkt `/responses` bedient, sowohl gepuffert als auch
+  gestreamt; `/chat/completions` lehnt sie ab.
 - **Reine Anthropic-Modelle** werden in den Dialekt der Anthropic Messages API
   übersetzt und an `/messages` gesendet – so, wie GoModel bereits natives Anthropic
   bedient. Beide Pfade werden auf dieselbe OpenAI-kompatible Response normalisiert,
@@ -67,6 +70,15 @@ pro Modell bereitstellt. Überschreiben Sie sie bei Bedarf:
 
 ```bash
 OPENCODE_GO_MESSAGES_MODELS=qwen3.7-max
+```
+
+Die Menge der reinen `/responses`-Modelle wird genauso gepflegt (Standard:
+`muse-spark-1.2-contributor`, `muse-spark-1.3-contributor`, `grok-4.7`,
+`gpt-5.6-luna`, `gpt-6-luna`). Setzen Sie die Variable auf eine
+kommagetrennte Liste von Modell-IDs, um die Standardmenge zu ersetzen:
+
+```bash
+OPENCODE_GO_RESPONSES_MODELS=muse-spark-1.3-contributor,grok-4.7,gpt-6-luna
 ```
 
 <Note>
