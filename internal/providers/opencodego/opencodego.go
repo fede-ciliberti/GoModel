@@ -48,7 +48,6 @@ const responsesModelsEnvVar = "OPENCODE_GO_RESPONSES_MODELS"
 var defaultResponsesModels = []string{
 	"muse-spark-1.2-contributor",
 	"muse-spark-1.3-contributor",
-	"grok-4.6",
 	"grok-4.7",
 	"gpt-5.6-luna",
 	"gpt-6-luna",
