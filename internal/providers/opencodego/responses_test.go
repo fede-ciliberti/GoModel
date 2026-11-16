@@ -20,7 +20,9 @@ const modelsListing = `{"object":"list","data":[
 	{"id":"muse-spark-1.3-contributor","object":"model","api":{"responses":{"base_url":"https://opencode.ai/inference/go/openai/v1"}}},
 	{"id":"grok-4.7","object":"model","api":{"responses":{"base_url":"https://opencode.ai/inference/go/openai/v1"}}},
 	{"id":"glm-5.1","object":"model","api":{"chat-completions":{"base_url":"https://opencode.ai/inference/go/openai/v1"}}},
-	{"id":"hybrid-model","object":"model","api":{"responses":{},"chat-completions":{}}}
+	{"id":"qwen4-max","object":"model","api":{"messages":{"base_url":"https://opencode.ai/inference/go/anthropic/v1"}}},
+	{"id":"hybrid-model","object":"model","api":{"responses":{},"chat-completions":{}}},
+	{"id":"hybrid-messages","object":"model","api":{"messages":{},"chat-completions":{}}}
 ]}`
 
 // responsesBody is a minimal completed Responses payload.
@@ -46,6 +48,30 @@ data: {"type":"response.completed","response":{"id":"resp_1","object":"response"
 // chatBody is a minimal chat completion payload.
 const chatBody = `{"id":"chatcmpl-1","created":1,"model":"glm-5.1","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`
 
+// messagesBody is a minimal Anthropic Messages payload.
+const messagesBody = `{"id":"msg_1","type":"message","role":"assistant","model":"qwen4-max","content":[{"type":"text","text":"hello"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`
+
+// messagesStreamBody is a minimal Anthropic Messages SSE stream.
+const messagesStreamBody = `event: message_start
+data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"qwen4-max","content":[],"stop_reason":null,"usage":{"input_tokens":1,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+`
+
 // routedServer answers the model listing and both inference endpoints, so a
 // test can assert which one the provider chose.
 func routedServer(t *testing.T) (string, *providertest.Capture) {
@@ -58,6 +84,15 @@ func routedServer(t *testing.T) (string, *providertest.Capture) {
 		"/chat/completions": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, chatBody)
+		},
+		"/messages": func(w http.ResponseWriter, r *http.Request) {
+			if wantsStream(r) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, messagesStreamBody)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, messagesBody)
 		},
 		"/responses": func(w http.ResponseWriter, r *http.Request) {
 			if wantsStream(r) {
@@ -167,6 +202,65 @@ func TestChatCompletion_ResponsesModel_KeepsPlainToolChoice(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "auto", capture.Last(t).JSON(t)["tool_choice"])
+}
+
+func TestChatCompletion_MessagesModel_UsesMessages(t *testing.T) {
+	url, capture := routedServer(t)
+
+	resp, err := newTestProvider(url, nil).ChatCompletion(context.Background(), chatRequest("qwen4-max"))
+	require.NoError(t, err)
+
+	req := capture.Last(t)
+	assert.Equal(t, "/messages", req.Path)
+	assert.Equal(t, "sk-opencode", req.Header.Get("x-api-key"))
+	assert.Empty(t, req.Header.Get("Authorization"))
+	assert.NotEmpty(t, req.Header.Get("anthropic-version"))
+	require.Len(t, resp.Choices, 1)
+	assert.Equal(t, "hello", resp.Choices[0].Message.Content)
+}
+
+func TestStreamChatCompletion_MessagesModel_UsesMessages(t *testing.T) {
+	url, capture := routedServer(t)
+
+	stream, err := newTestProvider(url, nil).StreamChatCompletion(context.Background(), &core.ChatRequest{
+		Model:    "opencode_go/qwen4-max",
+		Messages: []core.Message{{Role: "user", Content: "hi"}},
+		Stream:   true,
+	})
+	require.NoError(t, err)
+	defer func() { _ = stream.Close() }()
+	_, err = io.ReadAll(stream)
+	require.NoError(t, err)
+
+	assert.Equal(t, "/messages", capture.Last(t).Path)
+}
+
+// TestChatCompletion_ModelServedOnMessagesAndChat_StaysOnChat pins the tie-break:
+// the listing names the native dialect, not an exclusive one, and a model Zen
+// also serves on chat completions is sent there.
+func TestChatCompletion_ModelServedOnMessagesAndChat_StaysOnChat(t *testing.T) {
+	url, capture := routedServer(t)
+
+	_, err := newTestProvider(url, nil).ChatCompletion(context.Background(), chatRequest("hybrid-messages"))
+	require.NoError(t, err)
+
+	assert.Equal(t, "/chat/completions", capture.Last(t).Path)
+}
+
+// TestChatCompletion_MessagesEnvVarHasNoEffect pins that routing is metadata-only:
+// the retired OPENCODE_GO_MESSAGES_MODELS must not move a model anywhere.
+func TestChatCompletion_MessagesEnvVarHasNoEffect(t *testing.T) {
+	t.Setenv("OPENCODE_GO_MESSAGES_MODELS", "glm-5.1")
+	url, capture := routedServer(t)
+	provider := newTestProvider(url, nil)
+
+	_, err := provider.ChatCompletion(context.Background(), chatRequest("glm-5.1"))
+	require.NoError(t, err)
+	assert.Equal(t, "/chat/completions", capture.Last(t).Path, "the retired override must not route to /messages")
+
+	_, err = provider.ChatCompletion(context.Background(), chatRequest("qwen4-max"))
+	require.NoError(t, err)
+	assert.Equal(t, "/messages", capture.Last(t).Path, "the listing still decides")
 }
 
 func TestChatCompletion_ChatModel_StaysOnChatCompletions(t *testing.T) {
@@ -304,20 +398,25 @@ func TestResponses_ChatModel_TranslatesToChat(t *testing.T) {
 }
 
 // TestChatCompletion_UnknownModel_FallsBackToChat keeps a listing outage from
-// failing traffic: a model the provider cannot place is sent where most OpenCode
-// Zen models answer, as it was before routing existed.
+// failing traffic: a model the provider cannot place — including one the real
+// listing would have sent to /messages — is sent where most OpenCode Zen models
+// answer, as it was before routing existed.
 func TestChatCompletion_UnknownModel_FallsBackToChat(t *testing.T) {
-	server, capture := providertest.RouteServer(t, map[string]http.HandlerFunc{
-		"/chat/completions": func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(w, chatBody)
-		},
-	})
+	for _, model := range []string{"glm-5.1", "qwen4-max"} {
+		t.Run(model, func(t *testing.T) {
+			server, capture := providertest.RouteServer(t, map[string]http.HandlerFunc{
+				"/chat/completions": func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = io.WriteString(w, chatBody)
+				},
+			})
 
-	_, err := newTestProvider(server.URL, nil).ChatCompletion(context.Background(), chatRequest("glm-5.1"))
-	require.NoError(t, err)
+			_, err := newTestProvider(server.URL, nil).ChatCompletion(context.Background(), chatRequest(model))
+			require.NoError(t, err)
 
-	assert.Equal(t, "/chat/completions", capture.Last(t).Path)
+			assert.Equal(t, "/chat/completions", capture.Last(t).Path)
+		})
+	}
 }
 
 // TestChatCompletion_RoutesListingIsCached pins the refetch discipline: a second

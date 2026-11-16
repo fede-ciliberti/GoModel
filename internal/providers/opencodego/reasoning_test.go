@@ -169,18 +169,15 @@ func TestResponses_InjectsDefaultReasoningEffort(t *testing.T) {
 // the /chat/completions path only: the Anthropic-native dialect has no
 // reasoning_effort field.
 func TestChatCompletion_MessagesModelUnaffected(t *testing.T) {
-	server, capture := providertest.JSONServer(t, http.StatusOK, `{
-		"id":"msg_opencode",
-		"model":"qwen3.7-max",
-		"content":[{"type":"text","text":"hello"}],
-		"stop_reason":"end_turn",
-		"usage":{"input_tokens":5,"output_tokens":2}
-	}`)
-	_, err := newTestProvider(server.URL, server.Client()).ChatCompletion(context.Background(), &core.ChatRequest{
-		Model:    "qwen3.7-max",
+	// The listing is what routes this model to /messages; without it the request
+	// would be a chat completion and carry the injected effort.
+	url, capture := routedServer(t)
+	_, err := newTestProvider(url, nil).ChatCompletion(context.Background(), &core.ChatRequest{
+		Model:    "qwen4-max",
 		Messages: []core.Message{{Role: "user", Content: "hi"}},
 	})
 	require.NoError(t, err)
+	assert.Equal(t, "/messages", capture.Last(t).Path)
 	assert.NotContains(t, capture.Last(t).JSON(t), "reasoning_effort", "want absent on the /messages dialect")
 }
 

@@ -6,7 +6,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/enterpilot/gomodel/internal/core"
@@ -16,22 +15,11 @@ import (
 	"github.com/enterpilot/gomodel/internal/providers/openai"
 )
 
-// defaultBaseURL is the OpenCode Zen "Go" endpoint. Its /chat/completions and
-// /models routes are OpenAI-compatible (Bearer auth); its /messages route is
-// Anthropic-native (x-api-key auth). Override with OPENCODE_GO_BASE_URL.
+// defaultBaseURL is the OpenCode Zen "Go" endpoint. Its /chat/completions,
+// /responses and /models routes are OpenAI-compatible (Bearer auth); its
+// /messages route is Anthropic-native (x-api-key auth). Override with
+// OPENCODE_GO_BASE_URL.
 const defaultBaseURL = "https://opencode.ai/zen/go/v1"
-
-// messagesModelsEnvVar names a comma-separated override list of model IDs that
-// must be routed to the Anthropic-native /messages endpoint.
-const messagesModelsEnvVar = "OPENCODE_GO_MESSAGES_MODELS"
-
-// defaultMessagesModels lists the model IDs OpenCode Zen serves ONLY on its
-// Anthropic-native /messages endpoint — /chat/completions rejects them with
-// "not supported for format oa-compat". This is a temporary hardcoded set;
-// upstream does not yet expose per-model endpoint metadata, so the split is
-// maintained here and can be overridden with OPENCODE_GO_MESSAGES_MODELS until
-// metadata-driven routing replaces it.
-var defaultMessagesModels = []string{"qwen3.7-max"}
 
 // Registration provides factory registration for the OpenCode Go provider.
 // The "opencode_go" type derives OPENCODE_GO_API_KEY, OPENCODE_GO_BASE_URL, and
@@ -54,22 +42,22 @@ type messagesProvider interface {
 
 // Provider implements the core.Provider interface for OpenCode Go.
 //
-// OpenCode Zen exposes three upstream dialects behind one base URL:
-// OpenAI-style /chat/completions (most models), OpenAI-style /responses (the
-// models Zen publishes as Responses-native), and Anthropic-style /messages (a
-// few models /chat/completions rejects). GET /models names each model's native
-// dialect in its "api" member (see routes.go), and the provider routes every
-// request — chat or Responses — to it: the embedded ChatCompatible handles chat
-// and translates Responses to chat, while the Responses route forwards natively
-// for the models Zen serves there and chat requests to a Responses-only model
-// are translated the other way. The /messages models are delegated to an
-// Anthropic provider pinned to the same base URL, mirroring how GoModel already
-// serves /v1/messages for native Anthropic. Every path normalizes to the
-// canonical OpenAI-shaped response, so callers see one consistent surface.
+// OpenCode Zen exposes three upstream dialects behind one base URL, and
+// GET /models names the one each model is served on natively in its "api"
+// member (see routes.go): OpenAI-style /chat/completions, OpenAI-style
+// /responses, or Anthropic-style /messages. That listing is the only source of
+// the per-model routing — no model is listed in code — and every request follows
+// it in both directions: the embedded ChatCompatible handles chat and translates
+// Responses to chat, a chat request for a Responses-only model is translated to
+// the Responses API and rendered back, a Responses request for a model Zen
+// serves there is forwarded natively, and the models Zen serves on /messages are
+// delegated to an Anthropic provider pinned to the same base URL, mirroring how
+// GoModel already serves /v1/messages for native Anthropic. Every path
+// normalizes to the canonical OpenAI-shaped response, so callers see one
+// consistent surface.
 type Provider struct {
 	*openai.ChatCompatible
-	messages       messagesProvider
-	messagesModels map[string]struct{}
+	messages messagesProvider
 	// routes holds the API each model is served on, as GET /models publishes
 	// it.
 	routes *modelRoutes
@@ -106,7 +94,6 @@ func New(cfg providers.ProviderConfig, opts providers.ProviderOptions) core.Prov
 	return &Provider{
 		ChatCompatible: chat,
 		messages:       messages,
-		messagesModels: loadMessagesModels(),
 		routes:         &modelRoutes{},
 		adaptChat:      adaptChat,
 		adaptResponses: adaptResponsesRequest(defaultEffort),
@@ -131,36 +118,12 @@ func compatibleConfig(baseURL string, headers func(context.Context) http.Header,
 	}
 }
 
-// loadMessagesModels returns the set of model IDs routed to /messages, using the
-// OPENCODE_GO_MESSAGES_MODELS override when present.
-func loadMessagesModels() map[string]struct{} {
-	ids := defaultMessagesModels
-	if override := strings.TrimSpace(os.Getenv(messagesModelsEnvVar)); override != "" {
-		ids = strings.Split(override, ",")
-	}
-	set := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		if id = strings.TrimSpace(id); id != "" {
-			set[id] = struct{}{}
-		}
-	}
-	return set
-}
-
-// usesMessages reports whether a model must be served through the Anthropic
-// /messages endpoint. It matches on the bare model ID, tolerating an
-// "opencode_go/" provider prefix.
-func (p *Provider) usesMessages(model string) bool {
-	_, ok := p.messagesModels[bareModel(model)]
-	return ok
-}
-
-// ChatCompletion routes each model to the one API OpenCode Zen serves it on:
-// /messages for the Anthropic-only set, /responses for a Responses-only model,
-// and /chat/completions for everything else.
+// ChatCompletion routes each model to the API OpenCode Zen serves it on: the
+// Anthropic /messages dialect for a Messages-only model, the Responses API for a
+// Responses-only one, and /chat/completions for everything else.
 func (p *Provider) ChatCompletion(ctx context.Context, req *core.ChatRequest) (*core.ChatResponse, error) {
 	if req != nil {
-		if p.usesMessages(req.Model) {
+		if p.messagesOnly(ctx, req.Model) {
 			return p.messages.ChatCompletion(ctx, req)
 		}
 		if p.responsesOnly(ctx, req.Model) {
@@ -205,7 +168,7 @@ func (p *Provider) chatRequestForResponses(req *core.ChatRequest) (*core.ChatReq
 // StreamChatCompletion mirrors ChatCompletion's per-model endpoint routing.
 func (p *Provider) StreamChatCompletion(ctx context.Context, req *core.ChatRequest) (io.ReadCloser, error) {
 	if req != nil {
-		if p.usesMessages(req.Model) {
+		if p.messagesOnly(ctx, req.Model) {
 			return p.messages.StreamChatCompletion(ctx, req)
 		}
 		if p.responsesOnly(ctx, req.Model) {

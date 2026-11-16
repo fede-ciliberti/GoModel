@@ -14,10 +14,12 @@ import (
 
 // The API names OpenCode Zen publishes in each model's "api" member of
 // GET /models. A model lists the dialect it is served on natively; the others
-// are reached through OpenCode's own translation layer.
+// are reached through OpenCode's own translation layer, so the entry names the
+// dialect GoModel should use, not an exclusive one.
 const (
 	chatAPI      = "chat-completions"
 	responsesAPI = "responses"
+	messagesAPI  = "messages"
 )
 
 const (
@@ -32,9 +34,10 @@ const (
 )
 
 // modelRoutes holds the API each model is served on, as GET /models reports it
-// in the "api" member. A model the listing omits, or a listing that failed,
-// leaves the model unknown: it is then served on /chat/completions, where
-// OpenCode Zen translates the request itself.
+// in the "api" member. That listing is the only source of the per-model
+// dialect: a model it omits, or a listing that failed, leaves the model
+// unknown, which is then served on /chat/completions — the dialect that serves
+// most models and that OpenCode Zen translates for the rest.
 type modelRoutes struct {
 	mu        sync.RWMutex
 	apis      map[string][]string
@@ -142,6 +145,16 @@ func (p *Provider) responsesOnly(ctx context.Context, model string) bool {
 // so a Responses request can be forwarded instead of translated down to chat.
 func (p *Provider) servesResponses(ctx context.Context, model string) bool {
 	return slices.Contains(p.routes.lookup(ctx, bareModel(model), p.fetchModelAPIs), responsesAPI)
+}
+
+// messagesOnly reports whether OpenCode Zen publishes the model as native to the
+// Anthropic /messages dialect rather than to /chat/completions: a chat request
+// for it is translated to that dialect, the endpoint Zen documents for the model.
+// The listing names a native dialect, not an exclusive one — a model published on
+// both keeps /chat/completions, which takes the request as-is.
+func (p *Provider) messagesOnly(ctx context.Context, model string) bool {
+	apis := p.routes.lookup(ctx, bareModel(model), p.fetchModelAPIs)
+	return slices.Contains(apis, messagesAPI) && !slices.Contains(apis, chatAPI)
 }
 
 // bareModel drops a provider prefix the router keeps on the model name, so

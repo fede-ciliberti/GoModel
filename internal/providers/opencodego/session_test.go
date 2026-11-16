@@ -18,23 +18,42 @@ import (
 )
 
 // headerServer records every request and answers with a minimal chat
-// completion (or SSE stream) so both endpoint dialects succeed.
+// completion (or SSE stream) so both endpoint dialects succeed. Its model
+// listing routes headerChatModel to chat completions and headerMessagesModel to
+// the Anthropic /messages endpoint.
 func headerServer(t *testing.T) (*httptest.Server, *providertest.Capture) {
 	t.Helper()
 	return providertest.Server(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/models":
+			_, _ = w.Write([]byte(`{"object":"list","data":[
+				{"id":"` + headerChatModel + `","object":"model","api":{"chat-completions":{}}},
+				{"id":"` + headerMessagesModel + `","object":"model","api":{"messages":{}}}
+			]}`))
+			return
+		case "/messages":
+			_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","model":"` + headerMessagesModel + `","content":[{"type":"text","text":"hello"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`))
+			return
+		}
 		if r.Header.Get("Accept") == "text/event-stream" {
 			w.Header().Set("Content-Type", "text/event-stream")
+			if r.URL.Path == "/messages" {
+				_, _ = w.Write([]byte(messagesStreamBody))
+				return
+			}
 			_, _ = w.Write([]byte("data: [DONE]\n\n"))
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/messages" {
-			_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","model":"qwen3.7-max","content":[{"type":"text","text":"hello"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"id":"chatcmpl-1","created":1,"model":"glm-5.1","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`))
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-1","created":1,"model":"` + headerChatModel + `","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`))
 	})
 }
+
+// The two models headerServer's listing publishes, one per dialect.
+const (
+	headerChatModel     = "glm-5.1"
+	headerMessagesModel = "qwen4-max"
+)
 
 func snapshotContext(ctx context.Context, headers map[string][]string) context.Context {
 	snapshot := core.NewRequestSnapshot(http.MethodPost, "/v1/chat/completions", nil, nil, headers, "application/json", nil, false, "req-1", nil)
@@ -49,7 +68,7 @@ func TestRequestHeaders_DetectedSessionForwarded(t *testing.T) {
 	server, capture := headerServer(t)
 	ctx := core.WithSessionID(context.Background(), "session-123")
 
-	for _, model := range []string{"glm-5.1", "qwen3.7-max"} {
+	for _, model := range []string{headerChatModel, headerMessagesModel} {
 		t.Run(model, func(t *testing.T) {
 			_, err := newTestProvider(server.URL, server.Client()).ChatCompletion(ctx, chatRequest(model))
 			require.NoError(t, err)
@@ -66,7 +85,7 @@ func TestRequestHeaders_StreamCarriesSession(t *testing.T) {
 	server, capture := headerServer(t)
 	ctx := core.WithSessionID(context.Background(), "session-stream")
 
-	for _, model := range []string{"glm-5.1", "qwen3.7-max"} {
+	for _, model := range []string{headerChatModel, headerMessagesModel} {
 		t.Run(model, func(t *testing.T) {
 			body, err := newTestProvider(server.URL, server.Client()).StreamChatCompletion(ctx, chatRequest(model))
 			require.NoError(t, err)
@@ -109,7 +128,7 @@ func TestRequestHeaders_Disabled(t *testing.T) {
 	ctx := core.WithSessionID(context.Background(), "session-123")
 	ctx = snapshotContext(ctx, map[string][]string{"X-Opencode-Session": {"ses_client"}})
 
-	for _, model := range []string{"glm-5.1", "qwen3.7-max"} {
+	for _, model := range []string{headerChatModel, headerMessagesModel} {
 		t.Run(model, func(t *testing.T) {
 			_, err := newTestProvider(server.URL, server.Client()).ChatCompletion(ctx, chatRequest(model))
 			require.NoError(t, err)
@@ -122,10 +141,9 @@ func TestRequestHeaders_Disabled(t *testing.T) {
 }
 
 func TestNew_FactoryConstructorWiresHeadersOnBothPaths(t *testing.T) {
-	// Pin the env-driven defaults so an inherited override cannot disable the
-	// header or reroute the /messages model through /chat/completions.
+	// Pin the env-driven default so an inherited override cannot disable the
+	// header.
 	t.Setenv(sessionHeaderEnvVar, "")
-	t.Setenv(messagesModelsEnvVar, "qwen3.7-max")
 	server, capture := headerServer(t)
 	ctx := core.WithSessionID(context.Background(), "session-factory")
 	provider := New(providers.ProviderConfig{APIKey: "sk-opencode", BaseURL: server.URL}, providers.ProviderOptions{})
@@ -134,8 +152,8 @@ func TestNew_FactoryConstructorWiresHeadersOnBothPaths(t *testing.T) {
 		model    string
 		wantPath string
 	}{
-		{model: "glm-5.1", wantPath: "/chat/completions"},
-		{model: "qwen3.7-max", wantPath: "/messages"},
+		{model: headerChatModel, wantPath: "/chat/completions"},
+		{model: headerMessagesModel, wantPath: "/messages"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
