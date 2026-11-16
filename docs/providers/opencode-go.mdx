@@ -48,8 +48,9 @@ OPENCODE_GO_MODELS=glm-5.1,kimi-k2.7-code,deepseek-v4-pro
 OpenCode Zen serves each model on a native dialect, published in the `api`
 member of `GET /models`: OpenAI-style `/chat/completions` (Bearer auth),
 OpenAI-style `/responses`, or the Anthropic-native `/messages` endpoint
-(`x-api-key` auth). GoModel reads that listing and routes per model, so a model
-Zen adds lands on its own endpoint with no configuration change:
+(`x-api-key` auth). That listing is the only source of the per-model routing —
+GoModel holds no model list — so a model Zen adds or moves lands on its own
+endpoint with no configuration change:
 
 - **`/chat/completions` models** (GLM, Kimi, DeepSeek, MiMo, most Qwen) are sent
   as they arrive, on both surfaces: `/v1/responses` is translated to chat
@@ -59,8 +60,11 @@ Zen adds lands on its own endpoint with no configuration change:
   rejects them with "Model does not support this protocol", so a
   `/v1/chat/completions` request for one of them is translated to the Responses
   API and rendered back as a chat completion.
-- **Anthropic-only models** are translated to the Anthropic Messages dialect and
-  sent to `/messages`, mirroring how GoModel already serves native Anthropic.
+- **`/messages` models** (Qwen4 Max, Qwen3.8 Flash) are translated to the
+  Anthropic Messages dialect and sent to `/messages`, mirroring how GoModel
+  already serves native Anthropic. A model the listing publishes on both
+  `/messages` and `/chat/completions` stays on `/chat/completions`, which serves
+  it directly.
 
 Every path normalizes to the same OpenAI-compatible response, so clients see
 one consistent surface regardless of which model they pick — whether they call
@@ -71,18 +75,6 @@ the provider has not routed before, so routing costs no upstream call on the
 hot path. A model the listing does not mention — because the listing failed or
 the model is unpublished — is sent to `/chat/completions`, the endpoint that
 serves most models.
-
-The set of `/messages`-only models is still maintained manually (default:
-`qwen3.7-max`). Override it when needed:
-
-```bash
-OPENCODE_GO_MESSAGES_MODELS=qwen3.7-max
-```
-
-<Note>
-  The `/messages` split is temporary and will move onto the same metadata once
-  the provider routes Anthropic-native models from the listing too.
-</Note>
 
 ## Session header
 

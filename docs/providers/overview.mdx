@@ -196,11 +196,12 @@ support, not every individual model capability exposed by an upstream provider.
   MiMo's chat-completions audio dialect) as well as directly via chat
   completions; for 1M context append `[1m]` to the model ID, list it in
   `XIAOMI_MODELS`, and set `XIAOMI_MODELS_MODE=merge`.
-- **OpenCode Go (OpenCode Zen)** — routes per model: most models use
-  OpenAI-style `/chat/completions`, while `/messages`-only models (default
-  `qwen3.7-max`, override with `OPENCODE_GO_MESSAGES_MODELS`) are sent to the
-  Anthropic-native endpoint. Chat requests without a reasoning parameter get
-  `reasoning_effort: "low"` injected, because some models always think and
+- **OpenCode Go (OpenCode Zen)** — routes per model from the `api` member of
+  its own model listing: most models use OpenAI-style `/chat/completions`, the
+  ones it publishes as `/messages`-native are sent to the Anthropic endpoint, and
+  the `/responses`-native ones to the Responses API. Chat requests without a
+  reasoning parameter get `reasoning_effort: "low"` injected, because some models
+  always think and
   reject requests that omit it (override with
   `OPENCODE_GO_DEFAULT_REASONING_EFFORT`). Set `OPENCODE_GO_API_KEY`; the base
   URL defaults to `https://opencode.ai/zen/go/v1`.
@@ -359,8 +360,8 @@ These are the providers most users hit friction on:
 - **Xiaomi MiMo** — thinking mode on by default, a `[1m]` context suffix, and
   TTS/ASR that run through chat completions rather than native audio endpoints.
 - **OpenCode Go** — OpenCode Zen splits models across OpenAI-style
-  `/chat/completions` and Anthropic-native `/messages`; GoModel routes per model
-  (the `/messages`-only set is maintained manually, default `qwen3.7-max`).
+  `/chat/completions`, OpenAI-style `/responses` and Anthropic-native
+  `/messages`; GoModel routes per model from the listing's `api` member.
 - **ChatGPT subscription** — a Responses-only upstream with a strict parameter
   allowlist, used to put GoModel between Codex and a ChatGPT plan.
 - **GitHub Copilot** — getting a token, Business and Enterprise endpoints,

@@ -185,12 +185,12 @@ Gateways wieder, nicht jede einzelne Modellfähigkeit, die ein Upstream-Provider
   Completions) sowie direkt über Chat Completions bedient; für einen Kontext von 1M hängen Sie
   `[1m]` an die Modell-ID an, führen sie in `XIAOMI_MODELS` auf und setzen
   `XIAOMI_MODELS_MODE=merge`.
-- **OpenCode Go (OpenCode Zen)** – routet pro Modell: Die meisten Modelle verwenden
-  `/chat/completions` im OpenAI-Stil, während reine `/messages`-Modelle (standardmäßig
-  `qwen3.7-max`, überschreibbar mit `OPENCODE_GO_MESSAGES_MODELS`) an den Anthropic-nativen
-  Endpunkt gesendet werden. Chat-Requests ohne Reasoning-Parameter erhalten
-  `reasoning_effort: "low"`, weil manche Modelle immer denken und Requests ablehnen, in denen er
-  fehlt (überschreibbar mit `OPENCODE_GO_DEFAULT_REASONING_EFFORT`). Setzen Sie
+- **OpenCode Go (OpenCode Zen)** – routet pro Modell aus dem `api`-Feld des eigenen
+  Modell-Listings: die meisten Modelle verwenden `/chat/completions` im OpenAI-Stil,
+  die als `/messages`-nativ veröffentlichten gehen an den Anthropic-Endpunkt und die
+  `/responses`-nativen an die Responses API. Chat-Requests ohne Reasoning-Parameter
+  erhalten `reasoning_effort: "low"`, weil manche Modelle immer denken und Requests
+  ablehnen, in denen er fehlt (überschreibbar mit `OPENCODE_GO_DEFAULT_REASONING_EFFORT`). Setzen Sie
   `OPENCODE_GO_API_KEY`; die Base-URL ist standardmäßig `https://opencode.ai/zen/go/v1`.
 - **ChatGPT-Abonnement** – wird über das Kontingent des ChatGPT-Plans abgerechnet statt über
   API-Guthaben. Der Upstream bedient nur `/v1/responses`; Chat Completions werden in
@@ -338,9 +338,9 @@ Bei diesen Providern stoßen die meisten Benutzer auf Schwierigkeiten:
   Instanzen über Umgebungsvariablen mit Suffix und Provider-qualifizierte Modell-IDs.
 - **Xiaomi MiMo** – standardmäßig aktivierter Thinking-Modus, ein Kontext-Suffix `[1m]` sowie
   TTS/ASR, die über Chat Completions statt über native Audio-Endpunkte laufen.
-- **OpenCode Go** – OpenCode Zen verteilt Modelle auf `/chat/completions` im OpenAI-Stil und
-  Anthropic-natives `/messages`; GoModel routet pro Modell (die Menge der reinen
-  `/messages`-Modelle wird manuell gepflegt, Standard `qwen3.7-max`).
+- **OpenCode Go** – OpenCode Zen verteilt Modelle auf `/chat/completions` im
+  OpenAI-Stil, `/responses` und Anthropic-natives `/messages`; GoModel routet pro
+  Modell aus dem `api`-Feld des Modell-Listings.
 - **ChatGPT-Abonnement** – ein reiner Responses-Upstream mit einer strikten Parameter-Allowlist,
   der genutzt wird, um GoModel zwischen Codex und einen ChatGPT-Plan zu setzen.
 - **GitHub Copilot** – ein Token beschaffen, Endpunkte für Business und Enterprise und das Routing

@@ -200,10 +200,10 @@ przez providera upstream.
   audio chat-completions MiMo), a także bezpośrednio przez chat completions; aby
   uzyskać kontekst 1M, dopisz `[1m]` do ID modelu, dodaj je do `XIAOMI_MODELS`
   i ustaw `XIAOMI_MODELS_MODE=merge`.
-- **OpenCode Go (OpenCode Zen)** – routing per model: większość modeli używa
-  `/chat/completions` w stylu OpenAI, a modele obsługujące wyłącznie `/messages`
-  (domyślnie `qwen3.7-max`, nadpisz przez `OPENCODE_GO_MESSAGES_MODELS`) są
-  wysyłane do natywnego endpointu Anthropic. Do requestów chat bez parametru
+- **OpenCode Go (OpenCode Zen)** – routing per model z pola `api` własnej listy
+  modeli: większość modeli używa `/chat/completions` w stylu OpenAI, modele
+  publikowane jako natywne dla `/messages` trafiają do endpointu Anthropic, a te
+  natywne dla `/responses` do Responses API. Do requestów chat bez parametru
   reasoning wstrzykiwane jest `reasoning_effort: "low"`, bo niektóre modele
   zawsze myślą i odrzucają requesty, które go pomijają (nadpisz przez
   `OPENCODE_GO_DEFAULT_REASONING_EFFORT`). Ustaw `OPENCODE_GO_API_KEY`; base URL
@@ -372,9 +372,8 @@ To providerzy, z którymi użytkownicy najczęściej mają problemy:
 - **Xiaomi MiMo** – tryb thinking domyślnie włączony, sufiks kontekstu `[1m]` oraz
   TTS/ASR działające przez chat completions zamiast natywnych endpointów audio.
 - **OpenCode Go** – OpenCode Zen dzieli modele między `/chat/completions` w stylu
-  OpenAI i natywne dla Anthropic `/messages`; GoModel kieruje requesty per model
-  (zestaw modeli obsługujących wyłącznie `/messages` jest utrzymywany ręcznie,
-  domyślnie `qwen3.7-max`).
+  OpenAI, `/responses` i natywne dla Anthropic `/messages`; GoModel kieruje
+  requesty per model z pola `api` listy modeli.
 - **Subskrypcja ChatGPT** – upstream obsługujący wyłącznie Responses, ze ścisłą
   listą dozwolonych parametrów, używany do postawienia GoModel między Codexem a
   planem ChatGPT.
